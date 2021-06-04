@@ -166,7 +166,7 @@ export default class Index {
     }
 
     for (const documentIDScore of documentIDScores) {
-      const source = await this.fetchDocument(documentIDScore.documentID)
+      const source = await this.fetch(documentIDScore.documentID)
       hits.push({
         id: documentIDScore.documentID,
         score: documentIDScore.score,
@@ -177,7 +177,7 @@ export default class Index {
     return hits
   }
 
-  fetchDocument(documentID: string): Promise<Record<string, unknown>> {
+  fetch(documentID: string): Promise<Record<string, unknown>> {
     return new Promise((resolve, reject) => {
       if (this.shardCount === 0) {
           reject()
