@@ -7,7 +7,7 @@ export default class Index {
   documents: Record<string, Record<string, unknown>>
   documentStats: Record<string, DocumentStat>
   termStats: Record<string, TermStat>
-  shardCount: number;
+  shardCount: number
 
   constructor(indexName: string, baseURL: string) {
     this.indexName = indexName
@@ -57,7 +57,7 @@ export default class Index {
     let cc = new Uint32Array(1)
     for (const c of s) {
       cc[0] = c.charCodeAt(0)
-      result[0] += Q[0] + (cc[0] * cc[0])
+      result[0] += Q[0] + cc[0] * cc[0]
     }
 
     result[0] = Math.imul(result[0], Q[0])
@@ -71,50 +71,54 @@ export default class Index {
   async loadTermStatsFromShard(shardID: number): Promise<void> {
     return new Promise((resolve, reject) => {
       const url = `${this.baseURL}/${this.indexName}/${shardID}/${TERM_STATS_FILE_EXTENSION}`
-      fetch(url).then(async response => {
-        await this.loadTermStatsFromResponse(response)
-        resolve()
-      }).catch((e: Error) => {
-        reject(e)
-      })
+      fetch(url)
+        .then(async response => {
+          await this.loadTermStatsFromResponse(response)
+          resolve()
+        })
+        .catch((e: Error) => {
+          reject(e)
+        })
     })
   }
 
   async loadTermStatsFromResponse(response: Response): Promise<void> {
     return new Promise((resolve, reject) => {
-      response.text().then(async text => {
-        papa.parse(text, {
-          complete: (result) => {
-            for (const record of result.data as string[][]) {
-              if (record.length < 2) {
-                continue
-              }
-              const term = record[0]
-              const documentIDs = record[1].split(' ')
-              let termStat: TermStat = {
-                documentIDs: []
-              }
-              if (term in this.termStats) {
-                termStat = this.termStats[term]
-              }
-              for (const documentID of documentIDs) {
-                if (documentID in termStat.documentIDs) {
+      response
+        .text()
+        .then(async text => {
+          papa.parse(text, {
+            complete: result => {
+              for (const record of result.data as string[][]) {
+                if (record.length < 2) {
                   continue
                 }
-                termStat.documentIDs.push(documentID)
+                const term = record[0]
+                const documentIDs = record[1].split(' ')
+                let termStat: TermStat = {
+                  documentIDs: [],
+                }
+                if (term in this.termStats) {
+                  termStat = this.termStats[term]
+                }
+                for (const documentID of documentIDs) {
+                  if (documentID in termStat.documentIDs) {
+                    continue
+                  }
+                  termStat.documentIDs.push(documentID)
+                }
+                this.termStats[term] = termStat
               }
-              this.termStats[term] = termStat
-            }
-          }
+            },
+          })
+          resolve()
         })
-        resolve()
-      })
         .catch(e => reject(e))
     })
   }
 
   async findDocuments(tokens: string[]): Promise<string[]> {
-    let documentIDsSet = new Set<string>();
+    let documentIDsSet = new Set<string>()
 
     for (const token of tokens) {
       if (!(token in this.termStats)) {
@@ -148,7 +152,7 @@ export default class Index {
 
     for (const documentID of matchedDocumentIDs) {
       const score = await this.calculateScore(documentID, tokens)
-      documentIDScores.push({documentID, score})
+      documentIDScores.push({ documentID, score })
     }
 
     return documentIDScores.sort((a, b) => a.score - b.score)
@@ -158,7 +162,7 @@ export default class Index {
     let n = documentIDScores.length
     let hits: Hit[] = []
 
-    if (size == 0 || from >= n) {
+    if (size === 0 || from >= n) {
       return hits
     }
     if (n > size) {
@@ -173,18 +177,18 @@ export default class Index {
         source,
       })
     }
-    
+
     return hits
   }
 
   fetch(documentID: string): Promise<Record<string, unknown>> {
     return new Promise((resolve, reject) => {
       if (this.shardCount === 0) {
-          reject()
-          return
+        reject()
+        return
       }
 
-      const shardID = this.calculateShardID(documentID);
+      const shardID = this.calculateShardID(documentID)
       this.loadDocumentsFromShard(shardID).then(() => {
         if (documentID in this.documents) {
           resolve(this.documents[documentID])
@@ -199,8 +203,8 @@ export default class Index {
     let score = 0.0
 
     for (const token of tokens) {
-      let tf = await this.termFrequency(documentID, token);
-      score += tf * this.inverseDocumentFrequency(token);
+      let tf = await this.termFrequency(documentID, token)
+      score += tf * this.inverseDocumentFrequency(token)
     }
 
     return score
@@ -232,86 +236,95 @@ export default class Index {
   async loadDocumentStatsFromShard(shardID: number): Promise<void> {
     return new Promise((resolve, reject) => {
       const url = `${this.baseURL}/${this.indexName}/${shardID}/${DOCUMENT_STATS_FILE_EXTENSION}`
-      fetch(url).then(async response => {
-        await this.loadDocumentStatsFromResponse(response)
-        resolve()
-      }).catch((e: Error) => {
-        reject(e)
-      })
+      fetch(url)
+        .then(async response => {
+          await this.loadDocumentStatsFromResponse(response)
+          resolve()
+        })
+        .catch((e: Error) => {
+          reject(e)
+        })
     })
   }
 
   async loadDocumentStatsFromResponse(response: Response): Promise<void> {
     return new Promise((resolve, reject) => {
-      response.text().then(async text => {
-        papa.parse(text, {
-          complete: (result) => {
-            for (const record of result.data as string[][]) {
-              if (record.length < 2) {
-                continue
-              }
-              const documentID = record[0]
-              const termFrequencies = record[1].split(' ')
-              for (const tf of termFrequencies) {
-                const tmp = tf.split(':')
-
-                if (!(documentID in this.documentStats)) {
-                  this.documentStats[documentID] = {termFrequency: {}}
+      response
+        .text()
+        .then(async text => {
+          papa.parse(text, {
+            complete: result => {
+              for (const record of result.data as string[][]) {
+                if (record.length < 2) {
+                  continue
                 }
+                const documentID = record[0]
+                const termFrequencies = record[1].split(' ')
+                for (const tf of termFrequencies) {
+                  const tmp = tf.split(':')
 
-                if (documentID in this.documentStats) {
-                  const frequency = parseInt(tmp[1])
-                  this.documentStats[documentID].termFrequency[tmp[0]] = frequency
+                  if (!(documentID in this.documentStats)) {
+                    this.documentStats[documentID] = { termFrequency: {} }
+                  }
+
+                  if (documentID in this.documentStats) {
+                    const frequency = parseInt(tmp[1])
+                    this.documentStats[documentID].termFrequency[tmp[0]] = frequency
+                  }
                 }
               }
-            }
-          }
+            },
+          })
+          resolve()
         })
-        resolve()
-      })
         .catch(e => reject(e))
     })
   }
 
   async loadDocumentsFromShard(shardID: number): Promise<void> {
     return new Promise((resolve, reject) => {
-      fetch(`${this.baseURL}/${this.indexName}/${shardID}/${DOCUMENTS_FILE_EXTENSION}`).then(async response => {
-        await this.loadDocumentsFromResponse(response)
-        resolve()
-      }).catch((e: Error) => {
-        reject(e)
-      })
+      fetch(`${this.baseURL}/${this.indexName}/${shardID}/${DOCUMENTS_FILE_EXTENSION}`)
+        .then(async response => {
+          await this.loadDocumentsFromResponse(response)
+          resolve()
+        })
+        .catch((e: Error) => {
+          reject(e)
+        })
     })
   }
 
   async loadDocumentsFromResponse(response: Response): Promise<void> {
     return new Promise((resolve, reject) => {
-      response.text().then(async text => {
-        papa.parse(text, {
-          complete: (result) => {
-          let headers: string[] = []
+      response
+        .text()
+        .then(async text => {
+          papa.parse(text, {
+            complete: result => {
+              let headers: string[] = []
 
-            for (const record of result.data as string[][]) {
-              if (headers.length === 0) {
-                headers = record
-                continue
+              for (const record of result.data as string[][]) {
+                if (headers.length === 0) {
+                  headers = record
+                  continue
+                }
+
+                const documentID = record[0]
+                const document = documentFromRecord(headers, record)
+                this.documents[documentID] = document
               }
-
-              const documentID = record[0]
-              const document = documentFromRecord(headers, record)
-              this.documents[documentID] = document
-            }
-          }
+            },
+          })
+          resolve()
         })
-        resolve()
-      }).catch(e => reject(e))
+        .catch(e => reject(e))
     })
   }
 
   inverseDocumentFrequency(token: string): number {
     const a = Object.keys(this.documentStats).length
     const b = this.documentFrequency(token)
-    const frequency = a / b;
+    const frequency = a / b
     return Math.log10(frequency)
   }
 
@@ -321,14 +334,14 @@ export default class Index {
 }
 
 function documentFromRecord(headers: string[], record: string[]): Record<string, unknown> {
-	const document = {}
+  const document = {}
 
-	for (let i = 0; i < headers.length; i++) {
+  for (let i = 0; i < headers.length; i++) {
     if (i === 0) {
       continue
     }
-		_.set(document, headers[i], record[i])
-	}
+    _.set(document, headers[i], record[i])
+  }
 
   return document
 }
@@ -339,10 +352,11 @@ interface DocumentIDScore {
 }
 
 function analyze(s: string): string[] {
-  return s.split(/[',、　 ']+/)
+  return s
+    .split(/[',、　 ']+/)
     .map(s => s.toLowerCase())
     .map(s => s.replace(PUNCTUATIONS, ''))
-    .filter(s => STOP_WORDS.indexOf(s) == -1)
+    .filter(s => STOP_WORDS.indexOf(s) === -1)
 }
 
 interface SearchResult {
@@ -381,9 +395,39 @@ const SHARD_COUNT_FILE_NAME = 'shard_count'
 
 const PUNCTUATIONS = /!"#\$%&\(\)\*\+,-.\/:;<=>\?@[\\]\^_`{\|}~]/
 const STOP_WORDS = [
-  'a', 'and', 'are', 'as', 'at', 'be', 'but', 'by', 'for',
-  'if', 'in', 'into', 'is', 'it', 'no', 'not', 'of', 'on',
-  'or', 's', 'such', 't', 'that', 'the', 'their', 'then',
-  'there', 'these', 'they', 'this', 'to', 'was', 'will',
-  'with', 'www',
+  'a',
+  'and',
+  'are',
+  'as',
+  'at',
+  'be',
+  'but',
+  'by',
+  'for',
+  'if',
+  'in',
+  'into',
+  'is',
+  'it',
+  'no',
+  'not',
+  'of',
+  'on',
+  'or',
+  's',
+  'such',
+  't',
+  'that',
+  'the',
+  'their',
+  'then',
+  'there',
+  'these',
+  'they',
+  'this',
+  'to',
+  'was',
+  'will',
+  'with',
+  'www',
 ]
