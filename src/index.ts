@@ -1,7 +1,7 @@
 import papa from 'papaparse'
 import _ from 'lodash'
 
-export default class Index {
+export class Index {
   indexName: string
   baseURL: string
   documents: Record<string, Record<string, unknown>>
@@ -359,23 +359,23 @@ export function analyze(s: string): string[] {
     .filter(s => STOP_WORDS.indexOf(s) === -1)
 }
 
-interface SearchResult {
+export interface SearchResult {
   hits: Hit[]
   count: number
 }
 
-interface Hit {
+export interface Hit {
   id: string
   score: number
   source: Record<string, unknown>
 }
 
-interface SearchOptions {
+export interface SearchOptions {
   from: number
   size: number
 }
 
-const DEFAULT_SEARCH_OPTIONS: SearchOptions = {
+export const DEFAULT_SEARCH_OPTIONS: SearchOptions = {
   from: 0,
   size: 10,
 }
