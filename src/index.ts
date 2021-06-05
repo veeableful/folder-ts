@@ -351,7 +351,7 @@ interface DocumentIDScore {
   score: number
 }
 
-function analyze(s: string): string[] {
+export function analyze(s: string): string[] {
   return s
     .split(/[',、　 ']+/)
     .map(s => s.toLowerCase())
