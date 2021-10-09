@@ -1,12 +1,12 @@
 import { analyze, Index } from '../src'
 import 'isomorphic-fetch'
 
-let index: Index;
+let index: Index
 
 beforeEach(async () => {
   index = new Index('index', ['https://language-journal.veandco.sg-sin1.upcloudobjects.com', 'jmdict'].join('/'))
   await index.load()
-});
+})
 
 describe('analyze "lunar new year"', () => {
   it('works', () => {
