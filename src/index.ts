@@ -353,10 +353,11 @@ interface DocumentIDScore {
 
 export function analyze(s: string): string[] {
   return s
-    .split(/[',、　 ']+/)
+    .split(/[',、　 ​']+/)
     .map(s => s.toLowerCase())
     .map(s => s.replace(PUNCTUATIONS, ''))
     .filter(s => STOP_WORDS.indexOf(s) === -1)
+    .filter(s => s.length > 0)
 }
 
 export interface SearchResult {
