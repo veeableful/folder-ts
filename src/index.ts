@@ -161,6 +161,7 @@ export class Index {
   async fetchHits(documentIDScores: DocumentIDScore[], from: number, size: number): Promise<Hit[]> {
     let n = documentIDScores.length
     let hits: Hit[] = []
+    let cnt = 0
 
     if (size === 0 || from >= n) {
       return hits
@@ -170,12 +171,18 @@ export class Index {
     }
 
     for (const documentIDScore of documentIDScores) {
+      if (cnt >= size) {
+        break
+      }
+
       const source = await this.fetch(documentIDScore.documentID)
       hits.push({
         id: documentIDScore.documentID,
         score: documentIDScore.score,
         source,
       })
+
+      cnt += 1
     }
 
     return hits
