@@ -1,11 +1,92 @@
 import papa from 'papaparse'
 import _ from 'lodash'
 
+interface DocumentIDScore {
+  documentID: string
+  score: number
+}
+
+export function analyze(s: string): string[] {
+  return s
+    .split(/[',、　 ​']+/)
+    .map(s => s.toLowerCase())
+    .map(s => s.replace(PUNCTUATIONS, ''))
+    .filter(s => STOP_WORDS.indexOf(s) === -1)
+    .filter(s => s.length > 0)
+}
+
+export interface SearchResult {
+  hits: Hit[]
+  count: number
+}
+
+export interface Hit {
+  id: string
+  score: number
+  source: Record<string, unknown>
+}
+
+export interface SearchOptions {
+  from: number
+  size: number
+}
+
+export const DEFAULT_SEARCH_OPTIONS: SearchOptions = {
+  from: 0,
+  size: 10,
+}
+
+interface TermStat {
+  termFrequencies: Record<string, number>
+}
+
+const DOCUMENTS_FILE_EXTENSION = 'dcs'
+const TERM_STATS_FILE_EXTENSION = 'tst'
+const SHARD_COUNT_FILE_NAME = 'shard_count'
+
+const PUNCTUATIONS = /!"#\$%&\(\)\*\+,-.\/:;<=>\?@[\\]\^_`{\|}~]/
+const STOP_WORDS = [
+  'a',
+  'and',
+  'are',
+  'as',
+  'at',
+  'be',
+  'but',
+  'by',
+  'for',
+  'if',
+  'in',
+  'into',
+  'is',
+  'it',
+  'no',
+  'not',
+  'of',
+  'on',
+  'or',
+  's',
+  'such',
+  't',
+  'that',
+  'the',
+  'their',
+  'then',
+  'there',
+  'these',
+  'they',
+  'this',
+  'to',
+  'was',
+  'will',
+  'with',
+  'www',
+]
+
 export class Index {
   indexName: string
   baseURL: string
   documents: Record<string, Record<string, unknown>>
-  documentStats: Record<string, DocumentStat>
   termStats: Record<string, TermStat>
   shardCount: number
 
@@ -13,7 +94,6 @@ export class Index {
     this.indexName = indexName
     this.baseURL = baseURL
     this.documents = {}
-    this.documentStats = {}
     this.termStats = {}
     this.shardCount = 0
   }
@@ -93,20 +173,26 @@ export class Index {
                 if (record.length < 2) {
                   continue
                 }
+
                 const term = record[0]
-                const documentIDs = record[1].split(' ')
-                let termStat: TermStat = {
-                  documentIDs: [],
-                }
+                let termStat: TermStat
+
                 if (term in this.termStats) {
                   termStat = this.termStats[term]
-                }
-                for (const documentID of documentIDs) {
-                  if (documentID in termStat.documentIDs) {
-                    continue
+                } else {
+                  termStat = {
+                    termFrequencies: {},
                   }
-                  termStat.documentIDs.push(documentID)
                 }
+
+                const termFrequencies = record[1].split(' ')
+                for (const v of termFrequencies) {
+                  const vv = v.split(':')
+                  const id = vv[0]
+                  const frequency = vv[1]
+                  termStat.termFrequencies[id] = parseInt(frequency)
+                }
+
                 this.termStats[term] = termStat
               }
             },
@@ -126,7 +212,12 @@ export class Index {
       }
 
       const termStat = this.termStats[token]
-      const documentIDs = termStat.documentIDs
+
+      let documentIDs = []
+      for (const documentID in termStat.termFrequencies) {
+        documentIDs.push(documentID)
+      }
+
       if (documentIDsSet.size === 0) {
         for (const documentID of documentIDs) {
           documentIDsSet.add(documentID)
@@ -218,74 +309,29 @@ export class Index {
   }
 
   async termFrequency(documentID: string, token: string): Promise<number> {
-    const documentStat = await this.fetchDocumentStat(documentID)
-    if (!documentStat) {
+    const termStat = await this.fetchTermStat(token)
+    if (!termStat) {
       return 0.0
     }
-    if (token in documentStat.termFrequency) {
-      return documentStat.termFrequency[token]
+
+    if (documentID in termStat.termFrequencies) {
+      return termStat.termFrequencies[documentID]
     }
+
     return 0.0
   }
 
-  async fetchDocumentStat(documentID: string): Promise<DocumentStat | null> {
-    if (!(documentID in this.documentStats)) {
-      const shardID = this.calculateShardID(documentID)
-      await this.loadDocumentStatsFromShard(shardID)
+  async fetchTermStat(token: string): Promise<TermStat | null> {
+    if (!(token in this.termStats)) {
+      const shardID = this.calculateShardID(token)
+      await this.loadTermStatsFromShard(shardID)
     }
 
-    if (documentID in this.documentStats) {
-      return this.documentStats[documentID]
+    if (token in this.termStats) {
+      return this.termStats[token]
     }
+
     return null
-  }
-
-  async loadDocumentStatsFromShard(shardID: number): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const url = `${this.baseURL}/${this.indexName}/${shardID}/${DOCUMENT_STATS_FILE_EXTENSION}`
-      fetch(url)
-        .then(async response => {
-          await this.loadDocumentStatsFromResponse(response)
-          resolve()
-        })
-        .catch((e: Error) => {
-          reject(e)
-        })
-    })
-  }
-
-  async loadDocumentStatsFromResponse(response: Response): Promise<void> {
-    return new Promise((resolve, reject) => {
-      response
-        .text()
-        .then(async text => {
-          papa.parse(text, {
-            complete: result => {
-              for (const record of result.data as string[][]) {
-                if (record.length < 2) {
-                  continue
-                }
-                const documentID = record[0]
-                const termFrequencies = record[1].split(' ')
-                for (const tf of termFrequencies) {
-                  const tmp = tf.split(':')
-
-                  if (!(documentID in this.documentStats)) {
-                    this.documentStats[documentID] = { termFrequency: {} }
-                  }
-
-                  if (documentID in this.documentStats) {
-                    const frequency = parseInt(tmp[1])
-                    this.documentStats[documentID].termFrequency[tmp[0]] = frequency
-                  }
-                }
-              }
-            },
-          })
-          resolve()
-        })
-        .catch(e => reject(e))
-    })
   }
 
   async loadDocumentsFromShard(shardID: number): Promise<void> {
@@ -329,14 +375,14 @@ export class Index {
   }
 
   inverseDocumentFrequency(token: string): number {
-    const a = Object.keys(this.documentStats).length
-    const b = this.documentFrequency(token)
-    const frequency = a / b
+    const numberOfDocuments = Object.keys(this.documents).length
+    const numberOfDocumentsContainingToken = this.documentFrequency(token)
+    const frequency = numberOfDocuments / numberOfDocumentsContainingToken
     return Math.log10(frequency)
   }
 
   documentFrequency(token: string): number {
-    return this.termStats[token].documentIDs.length
+    return this.termStats[token].termFrequencies.length
   }
 }
 
@@ -352,90 +398,3 @@ function documentFromRecord(headers: string[], record: string[]): Record<string,
 
   return document
 }
-
-interface DocumentIDScore {
-  documentID: string
-  score: number
-}
-
-export function analyze(s: string): string[] {
-  return s
-    .split(/[',、　 ​']+/)
-    .map(s => s.toLowerCase())
-    .map(s => s.replace(PUNCTUATIONS, ''))
-    .filter(s => STOP_WORDS.indexOf(s) === -1)
-    .filter(s => s.length > 0)
-}
-
-export interface SearchResult {
-  hits: Hit[]
-  count: number
-}
-
-export interface Hit {
-  id: string
-  score: number
-  source: Record<string, unknown>
-}
-
-export interface SearchOptions {
-  from: number
-  size: number
-}
-
-export const DEFAULT_SEARCH_OPTIONS: SearchOptions = {
-  from: 0,
-  size: 10,
-}
-
-interface DocumentStat {
-  termFrequency: Record<string, number>
-}
-
-interface TermStat {
-  documentIDs: string[]
-}
-
-const DOCUMENTS_FILE_EXTENSION = 'dcs'
-const DOCUMENT_STATS_FILE_EXTENSION = 'dst'
-const TERM_STATS_FILE_EXTENSION = 'tst'
-const SHARD_COUNT_FILE_NAME = 'shard_count'
-
-const PUNCTUATIONS = /!"#\$%&\(\)\*\+,-.\/:;<=>\?@[\\]\^_`{\|}~]/
-const STOP_WORDS = [
-  'a',
-  'and',
-  'are',
-  'as',
-  'at',
-  'be',
-  'but',
-  'by',
-  'for',
-  'if',
-  'in',
-  'into',
-  'is',
-  'it',
-  'no',
-  'not',
-  'of',
-  'on',
-  'or',
-  's',
-  'such',
-  't',
-  'that',
-  'the',
-  'their',
-  'then',
-  'there',
-  'these',
-  'they',
-  'this',
-  'to',
-  'was',
-  'will',
-  'with',
-  'www',
-]
