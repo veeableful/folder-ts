@@ -20,3 +20,13 @@ describe('analyze "​再放送"', () => {
     expect(res).toEqual(['再放送'])
   })
 })
+
+describe('search "bowl"', () => {
+  it('works', async () => {
+    const start = Date.now()
+    const result = await index.search('bowl')
+    const end = Date.now()
+    expect(result.count).toEqual(102)
+    expect(end - start).toBeLessThanOrEqual(5000)
+  })
+})
